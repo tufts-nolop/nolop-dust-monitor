@@ -1,0 +1,23 @@
+[Unit]
+Description=Kiosk mode - Firefox fullscreen display
+After=systemd-user-sessions.service network-online.target
+Wants=network-online.target
+Conflicts=getty@tty1.service
+
+[Service]
+User=nolop-dust
+Group=nolop-dust
+PAMName=login
+Type=simple
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+ExecStart=/usr/bin/startx /usr/bin/openbox-session -- :0 vt1 -nocursor
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
