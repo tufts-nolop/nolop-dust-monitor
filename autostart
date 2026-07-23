@@ -1,0 +1,8 @@
+xset s off
+xset s noblank
+xset -dpms
+
+unclutter -idle 0.5 -root &
+
+until curl -s http://localhost:80 -o /dev/null; do sleep 1; done
+firefox-esr --kiosk --no-remote -P kiosk "http://localhost:80" &
