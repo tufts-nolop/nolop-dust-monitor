@@ -31,3 +31,22 @@ Set up the Openbox window manager to start Firefox as soon as the Flask app is r
 ```
 mv ~/nolop-dust-monitor/autostart ~/.config/openbox/autostart
 ```
+
+Install kiosk.service file to start X and Openbox. 
+
+Create Firefox profile tweaked for kiosk mode.
+
+```
+DISPLAY=:0 firefox-esr -CreateProfile kiosk
+```
+
+Add some weird stuff to the kiosk profile.
+
+```
+cat > ~/.mozilla/firefox/35dxmhxf.kiosk/prefs.js << 'EOF'
+user_pref("browser.sessionstore.resume_from_crash", false);
+user_pref("browser.shell.checkDefaultBrowser", false);
+EOF
+```
+
+Note that the `35dxmhxf.kiosk` profile directory name is random, so that needs to be changed in the command above.
