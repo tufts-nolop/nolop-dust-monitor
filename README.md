@@ -19,3 +19,15 @@ sudo systemctl daemon-reload
 sudo systemctl enable flask.service
 sudo systemctl start flask.service
 ```
+
+Add libraries so Firefox can run in kiosk mode.
+
+```
+sudo apt install --no-install-recommends xserver-xorg x11-xserver-utils xinit openbox firefox-esr unclutter
+```
+
+Set up the Openbox window manager to start Firefox as soon as the Flask app is running.
+
+```
+mv ~/nolop-dust-monitor/autostart ~/.config/openbox/autostart
+```
