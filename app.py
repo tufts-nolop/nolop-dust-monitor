@@ -213,7 +213,8 @@ def make_plot_png() -> bytes:
         ax.plot(timestamps, fine_counts, label="Fine particles", linewidth=2.5)
         ax.plot(timestamps, coarse_counts, label="Coarse particles", linewidth=2.5)
 
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M"))
+        display_tz = timestamps[-1].tzinfo
+        ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M", tz=display_tz))
         fig.autofmt_xdate(rotation=25, ha="right")
 
         latest = samples[-1]
@@ -445,3 +446,4 @@ if __name__ == "__main__":
         threaded=True,
         debug=False,
         use_reloader=False,
+    )
