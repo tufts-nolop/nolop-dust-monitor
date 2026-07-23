@@ -251,6 +251,31 @@ def make_plot_png() -> bytes:
     ax.set_xlabel("Time")
     ax.set_ylabel("Particle Count")
     ax.grid(True, alpha=0.3)
+
+    ax.axhline(
+        y=1000,
+        color="crimson",
+        linestyle="--",
+        linewidth=1.5,
+        label="OSHA 15 minute exposure limit for non-exotic wood dust(10 mg/m³)",
+    )
+
+    ax.axhline(
+        y=500,
+        color="darkorange",
+        linestyle="--",
+        linewidth=1.5,
+        label="OSHA 8-hour average limit for softwood dust (5 mg/m³)",
+    )
+
+    ax.axhline(
+        y=100,
+        color="yellow",
+        linestyle="--",
+        linewidth=1.5,
+        label="NIOSH 8-hour average limit for softwood dust (1 mg/m³)",
+    )
+
     ax.legend(loc="upper left")
     ax.set_ylim(bottom=0)
     fig.tight_layout()
