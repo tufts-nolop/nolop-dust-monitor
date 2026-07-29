@@ -38,6 +38,16 @@ MAX_POINTS = int(os.getenv("DYLOS_MAX_POINTS", "500"))
 PLOT_WINDOW_POINTS = int(os.getenv("DYLOS_PLOT_WINDOW_POINTS", "240"))
 RECONNECT_DELAY = float(os.getenv("DYLOS_RECONNECT_DELAY", "5"))
 
+MAX_DYLOS_COUNT = 7500
+
+# "take the difference between the two readings, the .5 and the 2.5, then divide by 100 to get micrograms per cubic meter"
+# to estimate PM2.5, per Dylos support
+DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION = 100
+OSHA_15_MIN_STEL_MG_PER_CUBIC_METER = 10
+OSHA_8_HR_TWA_PEL_MG_PER_CUBIC_METER = 5
+NIOSH_8_HR_TWA_REL_MG_PER_CUBIC_METER = 1
+UG_PER_MG = 1000
+
 app = Flask(__name__)
 
 history: deque[dict[str, Any]] = deque(maxlen=MAX_POINTS)
@@ -253,7 +263,7 @@ def make_plot_png() -> bytes:
     ax.grid(True, alpha=0.3)
 
     ax.axhline(
-        y=1000,
+        y=OSHA_15_MIN_STEL_MG_PER_CUBIC_METER * UG_PER_MG * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
         color="crimson",
         linestyle="--",
         linewidth=1.5,
@@ -261,7 +271,7 @@ def make_plot_png() -> bytes:
     )
 
     ax.axhline(
-        y=500,
+        y=OSHA_8_HR_TWA_PEL_MG_PER_CUBIC_METER * UG_PER_MG * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
         color="darkorange",
         linestyle="--",
         linewidth=1.5,
@@ -269,7 +279,7 @@ def make_plot_png() -> bytes:
     )
 
     ax.axhline(
-        y=100,
+        y=NIOSH_8_HR_TWA_REL_MG_PER_CUBIC_METER * UG_PER_MG * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
         color="yellow",
         linestyle="--",
         linewidth=1.5,
@@ -277,7 +287,7 @@ def make_plot_png() -> bytes:
     )
 
     ax.legend(loc="upper left")
-    ax.set_ylim(bottom=0)
+    ax.set_ylim(0, MAX_DYLOS_COUNT)
     fig.tight_layout()
 
     image_buffer = io.BytesIO()
