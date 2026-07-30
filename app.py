@@ -38,7 +38,7 @@ MAX_POINTS = int(os.getenv("DYLOS_MAX_POINTS", "500"))
 PLOT_WINDOW_POINTS = int(os.getenv("DYLOS_PLOT_WINDOW_POINTS", "240"))
 RECONNECT_DELAY = float(os.getenv("DYLOS_RECONNECT_DELAY", "5"))
 
-MAX_DYLOS_COUNT = 7500
+MAX_DYLOS_COUNT = 3000 # default, gets overridden if data particle count is higher
 
 # "take the difference between the two readings, the .5 and the 2.5, then divide by 100 to get micrograms per cubic meter"
 # to estimate PM2.5, per Dylos support
@@ -223,6 +223,9 @@ def make_plot_png() -> bytes:
         ax.plot(timestamps, fine_counts, label="Fine particles", linewidth=2.5)
         ax.plot(timestamps, coarse_counts, label="Coarse particles", linewidth=2.5)
 
+        y_max = max(MAX_DYLOS_COUNT, max(fine_counts) + 100)
+        ax.set_ylim(0, y_max)
+
         display_tz = timestamps[-1].tzinfo
         ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M", tz=display_tz))
         fig.autofmt_xdate(rotation=25, ha="right")
@@ -287,7 +290,6 @@ def make_plot_png() -> bytes:
     )
 
     ax.legend(loc="upper left")
-    ax.set_ylim(0, MAX_DYLOS_COUNT)
     fig.tight_layout()
 
     image_buffer = io.BytesIO()
