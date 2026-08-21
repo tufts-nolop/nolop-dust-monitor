@@ -1,3 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Red zone dust level</title>
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1c1f26;
+    --border: #2c3038;
+    --text: #e6e6e6;
+    --text-dim: #9aa0aa;
+    --accent-fine: #4fc3f7;
+    --accent-coarse: #ff8a65;
+    --good: #4caf50;
+    --bad: #ff5252;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+
+  .header-row {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+
+  .title-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .title-row img {
+    width: 36px;
+    height: 36px;
+    object-fit: contain;
+    flex-shrink: 0;
+  }
+
+  h1 {
+    font-size: 22px;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  #status-panel {
+    flex-shrink: 0;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 16px;
+    font-size: 13px;
+    text-align: right;
+    min-width: 200px;
+  }
+
+  #status-panel .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    margin-right: 8px;
+    vertical-align: middle;
+    background: var(--bad);
+  }
+
+  #status-panel .dot.connected {
+    background: var(--good);
+  }
+
+  #status-panel .dim {
+    color: var(--text-dim);
+    display: block;
+    margin-top: 4px;
+    font-size: 12px;
+  }
+
+  #plot {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px;
+    height: 600px;
+  }
+</style>
+</head>
+<body>
+
+  <div class="header-row">
+    <div>
+      <div class="title-row">
+        <img src="https://nolop.org/wp-content/uploads/2019/08/cropped-nolop-hexagon-logo-outline-2019.png" alt="Nolop logo">
+        <h1>Red zone dust level</h1>
+      </div>
+    </div>
+    <div id="status-panel">{% include "status.html" %}</div>
+  </div>
+
+  <div id="plot"></div>
+
+  <script>
+    const plotDiv = document.getElementById("plot");
+    const statusPanel = document.getElementById("status-panel");
+
+    const darkLayout = {
+      paper_bgcolor: "#1c1f26",
+      plot_bgcolor: "#1c1f26",
+      font: { color: "#e6e6e6" },
+      margin: { t: 20, r: 30, l: 60, b: 40 },
+      legend: {
+        x: 0.01,
+        y: 0.97,
+        xanchor: "left",
+        yanchor: "top",
+        bgcolor: "rgba(28, 31, 38, 0.75)",
+        bordercolor: "#2c3038",
+        borderwidth: 1,
+        font: { color: "#e6e6e6" }
+      },
+      xaxis: {
+        title: "Time",
+        type: "date",
+        gridcolor: "#2c3038",
+        zerolinecolor: "#2c3038",
+        rangeslider: { visible: true, thickness: 0.05, bgcolor: "#14161a", bordercolor: "#2c3038" },
+        rangeselector: {
+          bgcolor: "#242830",
+          activecolor: "#3a4050",
+          bordercolor: "#2c3038",
+          font: { color: "#e6e6e6" },
+          buttons: [
+            { count: 15, label: "15m", step: "minute", stepmode: "backward" },
+            { count: 1, label: "1h", step: "hour", stepmode: "backward" },
+            { count: 6, label: "6h", step: "hour", stepmode: "backward" },
+            { count: 24, label: "24h", step: "hour", stepmode: "backward" },
+            { step: "all", label: "All" }
+          ]
+        }
+      },
+      yaxis: {
+        title: "Particle Count",
+        gridcolor: "#2c3038",
+        zerolinecolor: "#2c3038",
+        rangemode: "tozero"
+      },
+      uirevision: "keep"
+    };
+
+    const config = {
+      responsive: true,
+      displaylogo: false
+    };
+
+    let initialized = false;
+
+    function buildTraces(data) {
+      const traces = [
+        {
+          x: data.timestamps,
+          y: data.fine,
+          name: "Fine particles",
+          mode: "lines",
+          line: { color: "#4fc3f7", width: 2.5 }
+        },
+        {
+          x: data.timestamps,
+          y: data.coarse,
+          name: "Coarse particles",
+          mode: "lines",
+          line: { color: "#ff8a65", width: 2.5 }
+        }
+      ];
+
+      data.thresholds.forEach((threshold) => {
+        traces.push({
+          x: data.timestamps.length ? [data.timestamps[0], data.timestamps[data.timestamps.length - 1]] : [],
+          y: [threshold.value, threshold.value],
+          name: threshold.label,
+          mode: "lines",
+          line: { color: threshold.color, width: 1.5, dash: "dash" },
+          hoverinfo: "name+y"
+        });
+      });
+
+      return traces;
+    }
+
+    async function refreshStatus() {
+      try {
+        const response = await fetch("/status-panel", { cache: "no-store" });
+        statusPanel.innerHTML = await response.text();
+      } catch (err) {
+        statusPanel.textContent = "Unable to reach the dashboard server.";
+      }
+    }
+
+    async function refreshPlot() {
+      let data;
+      try {
+        const response = await fetch("/data.json", { cache: "no-store" });
+        data = await response.json();
+      } catch (err) {
+        return;
+      }
+
+      const traces = buildTraces(data);
+
+      const latestTimestamp = data.timestamps.length
+        ? data.timestamps[data.timestamps.length - 1]
+        : null;
+      const defaultRange = latestTimestamp
+        ? [
+            new Date(new Date(latestTimestamp).getTime() - 12 * 60 * 60 * 1000),
+            new Date(latestTimestamp)
+          ]
+        : undefined;
+
+      const layout = {
+        ...darkLayout,
+        xaxis: {
+          ...darkLayout.xaxis,
+          range: defaultRange
+        },
+        yaxis: {
+          ...darkLayout.yaxis,
+          range: [0, data.y_max]
+        }
+      };
+
+      if (!initialized) {
+        Plotly.newPlot(plotDiv, traces, layout, config);
+        initialized = true;
+      } else {
+        Plotly.react(plotDiv, traces, layout, config);
+      }
+    }
+
+    refreshPlot();
+    setInterval(refreshStatus, 5000);
+    setInterval(refreshPlot, 5000);
+  </script>
+</body>
+</html>
 <!doctype html>
 <html lang="en">
 <head>
