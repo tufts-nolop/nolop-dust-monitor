@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import csv
-import io
 import os
 import socket
 import threading
@@ -11,13 +10,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import matplotlib
-matplotlib.use("Agg")
-
-import matplotlib.dates as mdates
-import matplotlib.pyplot as plt
 import serial
-from flask import Flask, Response, render_template
+from flask import Flask, Response, jsonify, render_template
 
 
 SERIAL_PORT = os.getenv("DYLOS_PORT", "/dev/serial/by-id/usb-FTDI_USB_Serial_Converter_FTDN821F-if00-port0")
@@ -35,10 +29,9 @@ def resolve_log_path(path: str | os.PathLike[str] | Path) -> Path:
 LOG_FILE = resolve_log_path(os.getenv("DYLOS_LOG_FILE", str(APP_ROOT / "dylos_log.csv")))
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 MAX_POINTS = int(os.getenv("DYLOS_MAX_POINTS", "500"))
-PLOT_WINDOW_POINTS = int(os.getenv("DYLOS_PLOT_WINDOW_POINTS", "240"))
 RECONNECT_DELAY = float(os.getenv("DYLOS_RECONNECT_DELAY", "5"))
 
-MAX_DYLOS_COUNT = 3000 # default, gets overridden if data particle count is higher
+MAX_DYLOS_COUNT = 3000  # default, gets overridden if data particle count is higher
 
 # "take the difference between the two readings, the .5 and the 2.5, then divide by 100 to get micrograms per cubic meter"
 # to estimate PM2.5, per Dylos support
@@ -61,10 +54,6 @@ status = {
     "small": None,
     "large": None,
 }
-
-plot_condition = threading.Condition()
-latest_plot: bytes | None = None
-plot_version = 0
 
 service_lock = threading.Lock()
 services_started = False
@@ -207,118 +196,14 @@ def load_existing_history() -> None:
             )
 
 
-def make_plot_png() -> bytes:
-    with history_lock:
-        samples = list(history)
-
-    current_status = get_status()
-    fig, ax = plt.subplots(figsize=(14, 7), dpi=120)
-
-    if samples:
-        samples = samples[-PLOT_WINDOW_POINTS:]
-        timestamps = [sample["timestamp"] for sample in samples]
-        fine_counts = [sample["small"] for sample in samples]
-        coarse_counts = [sample["large"] for sample in samples]
-
-        ax.plot(timestamps, fine_counts, label="Fine particles", linewidth=2.5)
-        ax.plot(timestamps, coarse_counts, label="Coarse particles", linewidth=2.5)
-
-        y_max = max(MAX_DYLOS_COUNT, max(fine_counts) + 100)
-        ax.set_ylim(0, y_max)
-
-        display_tz = timestamps[-1].tzinfo
-        ax.xaxis.set_major_formatter(mdates.DateFormatter("%m/%d %H:%M", tz=display_tz))
-        fig.autofmt_xdate(rotation=25, ha="right")
-
-        latest = samples[-1]
-        subtitle = (
-            f'Latest sample: {latest["timestamp"]:%Y-%m-%d %H:%M:%S}   '
-            f'Fine: {latest["small"]:g}   '
-            f'Coarse: {latest["large"]:g}'
-        )
-    else:
-        ax.text(
-            0.5,
-            0.5,
-            "Waiting for valid Dylos data...",
-            transform=ax.transAxes,
-            ha="center",
-            va="center",
-            fontsize=20,
-        )
-        subtitle = "No valid samples have been received yet."
-
-    connection_text = (
-        f"Connected to {SERIAL_PORT}"
-        if current_status["connected"]
-        else current_status["message"]
-    )
-
-    ax.set_title(
-        "Particle Counts Over Time\n"
-        f"{subtitle}\n"
-        f"{connection_text}",
-        fontsize=16,
-        pad=14,
-    )
-    ax.set_xlabel("Time")
-    ax.set_ylabel("Particle Count")
-    ax.grid(True, alpha=0.3)
-
-    ax.axhline(
-        y=OSHA_15_MIN_STEL_MG_PER_CUBIC_METER * UG_PER_MG * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
-        color="crimson",
-        linestyle="--",
-        linewidth=1.5,
-        label="OSHA 15 minute exposure limit for non-exotic wood dust(10 mg/m³)",
-    )
-
-    ax.axhline(
-        y=OSHA_8_HR_TWA_PEL_MG_PER_CUBIC_METER * UG_PER_MG * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
-        color="darkorange",
-        linestyle="--",
-        linewidth=1.5,
-        label="OSHA 8-hour average limit for softwood dust (5 mg/m³)",
-    )
-
-    ax.axhline(
-        y=NIOSH_8_HR_TWA_REL_MG_PER_CUBIC_METER * UG_PER_MG * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
-        color="yellow",
-        linestyle="--",
-        linewidth=1.5,
-        label="NIOSH 8-hour average limit for softwood dust (1 mg/m³)",
-    )
-
-    ax.legend(loc="upper left")
-    fig.tight_layout()
-
-    image_buffer = io.BytesIO()
-    fig.savefig(image_buffer, format="png", bbox_inches="tight")
-    plt.close(fig)
-    return image_buffer.getvalue()
-
-
-def update_plot() -> None:
-    global latest_plot, plot_version
-
-    new_plot = make_plot_png()
-
-    with plot_condition:
-        latest_plot = new_plot
-        plot_version += 1
-        plot_condition.notify_all()
-
-
 def serial_worker() -> None:
     while True:
         set_status(connected=False, message=f"Opening {SERIAL_PORT}")
-        update_plot()
 
         try:
             with serial.Serial(SERIAL_PORT, BAUDRATE, timeout=1.0) as ser:
                 ser.reset_input_buffer()
                 set_status(connected=True, message=f"Connected to {SERIAL_PORT}")
-                update_plot()
 
                 print(f"Listening on {SERIAL_PORT} at {BAUDRATE} baud.")
                 print(f"Logging to {LOG_FILE.resolve()}")
@@ -359,7 +244,6 @@ def serial_worker() -> None:
                         large=large_value,
                     )
 
-                    update_plot()
                     print(
                         f"{timestamp:%Y-%m-%d %H:%M:%S} "
                         f"fine={small:g}, coarse={large:g}"
@@ -372,7 +256,6 @@ def serial_worker() -> None:
             )
             print(message)
             set_status(connected=False, message=message)
-            update_plot()
             time.sleep(RECONNECT_DELAY)
 
 
@@ -384,7 +267,6 @@ def start_services() -> None:
             return
 
         load_existing_history()
-        update_plot()
 
         thread = threading.Thread(
             target=serial_worker,
@@ -403,56 +285,69 @@ def ensure_services_started() -> None:
 
 @app.get("/")
 def index() -> str:
-    return render_template("index.html")
-
-
-@app.get("/plot-stream")
-def plot_stream() -> Response:
-    def generate():
-        seen_version = -1
-
-        while True:
-            with plot_condition:
-                plot_condition.wait_for(lambda: plot_version != seen_version)
-                image = latest_plot
-                seen_version = plot_version
-
-            if image is None:
-                continue
-
-            yield (
-                b"--frame\r\n"
-                b"Content-Type: image/png\r\n"
-                b"Cache-Control: no-cache\r\n\r\n"
-                + image
-                + b"\r\n"
-            )
-
-    return Response(
-        generate(),
-        mimetype="multipart/x-mixed-replace; boundary=frame",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
-        },
+    return render_template(
+        "index.html",
+        status=get_status(),
+        port=SERIAL_PORT,
     )
 
 
-@app.get("/plot.png")
-def plot_png() -> Response:
-    global latest_plot
+@app.get("/data.json")
+def data_json() -> Response:
+    with history_lock:
+        samples = list(history)
 
-    if latest_plot is None:
-        update_plot()
+    current_status = get_status()
 
-    return Response(
-        latest_plot,
-        mimetype="image/png",
-        headers={
-            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-            "Pragma": "no-cache",
+    timestamps = [sample["timestamp"].isoformat() for sample in samples]
+    fine_counts = [sample["small"] for sample in samples]
+    coarse_counts = [sample["large"] for sample in samples]
+
+    y_max = MAX_DYLOS_COUNT
+    if fine_counts:
+        y_max = max(MAX_DYLOS_COUNT, max(fine_counts) + 100)
+
+    payload = {
+        "timestamps": timestamps,
+        "fine": fine_counts,
+        "coarse": coarse_counts,
+        "y_max": y_max,
+        "thresholds": [
+            {
+                "label": "OSHA 15-min exposure limit, non-exotic wood dust (10 mg/m\u00b3)",
+                "value": OSHA_15_MIN_STEL_MG_PER_CUBIC_METER
+                * UG_PER_MG
+                * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
+                "color": "#ff4d4d",
+            },
+            {
+                "label": "OSHA 8-hr average limit, softwood dust (5 mg/m\u00b3)",
+                "value": OSHA_8_HR_TWA_PEL_MG_PER_CUBIC_METER
+                * UG_PER_MG
+                * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
+                "color": "#ffa63d",
+            },
+            {
+                "label": "NIOSH 8-hr average limit, softwood dust (1 mg/m\u00b3)",
+                "value": NIOSH_8_HR_TWA_REL_MG_PER_CUBIC_METER
+                * UG_PER_MG
+                * DYLOS_COUNTS_TO_UG_PER_CUBIC_METER_CONVERSION,
+                "color": "#f5e642",
+            },
+        ],
+        "status": {
+            "connected": current_status["connected"],
+            "message": current_status["message"],
+            "last_sample": current_status["last_sample"].isoformat()
+            if current_status["last_sample"]
+            else None,
+            "small": current_status["small"],
+            "large": current_status["large"],
+            "port": SERIAL_PORT,
         },
-    )
+    }
+
+    return jsonify(payload)
 
 
 @app.get("/status-panel")
