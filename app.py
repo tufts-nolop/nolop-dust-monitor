@@ -28,7 +28,7 @@ def resolve_log_path(path: str | os.PathLike[str] | Path) -> Path:
 
 LOG_FILE = resolve_log_path(os.getenv("DYLOS_LOG_FILE", str(APP_ROOT / "dylos_log.csv")))
 LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-MAX_POINTS = int(os.getenv("DYLOS_MAX_POINTS", "500"))
+MAX_POINTS = int(os.getenv("DYLOS_MAX_POINTS", "20000"))
 RECONNECT_DELAY = float(os.getenv("DYLOS_RECONNECT_DELAY", "5"))
 
 MAX_DYLOS_COUNT = 3000  # default, gets overridden if data particle count is higher
