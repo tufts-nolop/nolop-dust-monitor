@@ -297,8 +297,6 @@ def data_json() -> Response:
     with history_lock:
         samples = list(history)
 
-    current_status = get_status()
-
     timestamps = [sample["timestamp"].isoformat() for sample in samples]
     fine_counts = [sample["small"] for sample in samples]
     coarse_counts = [sample["large"] for sample in samples]
@@ -335,16 +333,6 @@ def data_json() -> Response:
                 "color": "#f5e642",
             },
         ],
-        "status": {
-            "connected": current_status["connected"],
-            "message": current_status["message"],
-            "last_sample": current_status["last_sample"].isoformat()
-            if current_status["last_sample"]
-            else None,
-            "small": current_status["small"],
-            "large": current_status["large"],
-            "port": SERIAL_PORT,
-        },
     }
 
     return jsonify(payload)
