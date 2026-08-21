@@ -1,4 +1,20 @@
-<!doctype html>
+<span class="dot{% if status.connected %} connected{% endif %}"></span>
+<span>
+  {% if status.connected %}
+    Connected to {{ port }}
+  {% else %}
+    {{ status.message }}
+  {% endif %}
+</span>
+<span class="dim">
+  {% if status.last_sample %}
+    Latest: {{ status.last_sample.strftime("%Y-%m-%d %H:%M:%S") }}
+    &nbsp; Fine: {{ status.small | int }}
+    &nbsp; Coarse: {{ status.large | int }}
+  {% else %}
+    Waiting for the first valid measurement.
+  {% endif %}
+</span><!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
