@@ -6,7 +6,9 @@ After=network.target
 Type=simple
 User=pi
 WorkingDirectory=/home/pi/nolop-dust-monitor
-Environment="FLASK_APP=app.py"
+Environment=FLASK_APP=app.py
+Environment=PURPLEAIR_API_KEY=API_KEY_GOES_HERE
+Environment=PURPLEAIR_SENSOR_INDEX=181787
 AmbientCapabilities=CAP_NET_BIND_SERVICE
 ExecStart=/usr/bin/python3 -m flask run --host=0.0.0.0 --port=80
 Restart=on-failure
