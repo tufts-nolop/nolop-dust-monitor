@@ -151,6 +151,14 @@
         zerolinecolor: "#2c3038",
         rangemode: "tozero"
       },
+      yaxis2: {
+        title: "Outdoor AQI",
+        overlaying: "y",
+        side: "right",
+        showgrid: false,
+        zerolinecolor: "#2c3038",
+        rangemode: "tozero"
+      },
       uirevision: "keep"
     };
 
@@ -178,6 +186,17 @@
           line: { color: "#ff8a65", width: 2.5 }
         }
       ];
+
+      if (data.outdoor_timestamps.length) {
+        traces.push({
+          x: data.outdoor_timestamps,
+          y: data.outdoor_aqi,
+          name: "Outdoor AQI",
+          mode: "lines",
+          line: { color: "#b388ff", width: 2.5 },
+          yaxis: "y2"
+        });
+      }
 
       data.thresholds.forEach((threshold) => {
         traces.push({
@@ -234,6 +253,10 @@
         yaxis: {
           ...darkLayout.yaxis,
           range: [0, data.y_max]
+        },
+        yaxis2: {
+          ...darkLayout.yaxis2,
+          range: [0, data.outdoor_y_max]
         }
       };
 
