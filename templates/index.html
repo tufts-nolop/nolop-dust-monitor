@@ -139,7 +139,7 @@
           buttons: [
             { count: 15, label: "15m", step: "minute", stepmode: "backward" },
             { count: 1, label: "1h", step: "hour", stepmode: "backward" },
-            { count: 6, label: "6h", step: "hour", stepmode: "backward" },
+            { count: 8, label: "8h", step: "hour", stepmode: "backward" },
             { count: 24, label: "24h", step: "hour", stepmode: "backward" },
             { step: "all", label: "All" }
           ]
@@ -168,6 +168,27 @@
     };
 
     let initialized = false;
+    // Tracks the x-range we want displayed: [start, end] when zoomed to a
+    // window, or null when the view should be autoranged ("All"). We manage
+    // this ourselves and re-apply it on every refresh, since Plotly.react()
+    // doesn't reliably preserve a programmatically-set range via uirevision.
+    let currentXRange = null;
+
+    // Track user-driven zoom/pan/rangeselector changes so the 5s polling
+    // refresh doesn't clobber whatever the user last selected. plotDiv.on
+    // only exists once Plotly has initialized the element, so this is
+    // wired up right after the first Plotly.newPlot() call below.
+    function attachRelayoutListener() {
+      plotDiv.on("plotly_relayout", (eventData) => {
+        if (eventData["xaxis.range[0]"] !== undefined && eventData["xaxis.range[1]"] !== undefined) {
+          currentXRange = [eventData["xaxis.range[0]"], eventData["xaxis.range[1]"]];
+        } else if (Array.isArray(eventData["xaxis.range"])) {
+          currentXRange = eventData["xaxis.range"];
+        } else if (eventData["xaxis.autorange"]) {
+          currentXRange = null; // user clicked "All" or double-clicked to reset
+        }
+      });
+    }
 
     function buildTraces(data) {
       const traces = [
@@ -176,14 +197,14 @@
           y: data.fine,
           name: "Fine particles",
           mode: "lines",
-          line: { color: "#4fc3f7", width: 2.5 }
+          line: { color: "#4fc3f7", width: 1.0 }
         },
         {
           x: data.timestamps,
           y: data.coarse,
           name: "Coarse particles",
           mode: "lines",
-          line: { color: "#ff8a65", width: 2.5 }
+          line: { color: "#ff8a65", width: 1.0 }
         }
       ];
 
@@ -193,7 +214,7 @@
           y: data.outdoor_aqi,
           name: "Outdoor AQI",
           mode: "lines",
-          line: { color: "#b388ff", width: 2.5 },
+          line: { color: "#b388ff", width: 1.0 },
           yaxis: "y2"
         });
       }
@@ -231,7 +252,6 @@
       }
 
       const traces = buildTraces(data);
-
       const xaxisConfig = { ...darkLayout.xaxis };
 
       if (!initialized) {
@@ -240,12 +260,17 @@
           : null;
 
         if (latestTimestamp) {
-          xaxisConfig.range = [
-            new Date(new Date(latestTimestamp).getTime() - 12 * 60 * 60 * 1000),
+          currentXRange = [
+            new Date(new Date(latestTimestamp).getTime() - 8 * 60 * 60 * 1000),
             new Date(latestTimestamp)
           ];
         }
       }
+
+      if (currentXRange) {
+        xaxisConfig.range = currentXRange;
+      }
+      // else: leave range unset, letting Plotly autorange (this is "All")
 
       const layout = {
         ...darkLayout,
@@ -262,6 +287,7 @@
 
       if (!initialized) {
         Plotly.newPlot(plotDiv, traces, layout, config);
+        attachRelayoutListener();
         initialized = true;
       } else {
         Plotly.react(plotDiv, traces, layout, config);
