@@ -24,7 +24,7 @@ APP_ROOT = Path(__file__).resolve().parent
 PURPLEAIR_API_KEY = os.getenv("PURPLEAIR_API_KEY", "")
 PURPLEAIR_SENSOR_INDEX = os.getenv("PURPLEAIR_SENSOR_INDEX", "")
 PURPLEAIR_POLL_INTERVAL = float(os.getenv("PURPLEAIR_POLL_INTERVAL", "300"))
-DEFAULT_OUTDOOR_AQI_MAX = 200  # default yaxis2 ceiling, gets overridden if AQI is higher
+DEFAULT_OUTDOOR_AQI_MAX = 500  # default yaxis2 ceiling, gets overridden if AQI is higher
 
 
 def resolve_log_path(path: str | os.PathLike[str] | Path) -> Path:
