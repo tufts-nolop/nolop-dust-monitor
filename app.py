@@ -467,25 +467,23 @@ def data_json() -> Response:
     fine_counts = [sample["small"] for sample in samples]
     coarse_counts = [sample["large"] for sample in samples]
 
-    y_max = MAX_DYLOS_COUNT
-    if fine_counts:
-        y_max = max(MAX_DYLOS_COUNT, max(fine_counts) + 100)
-
     outdoor_timestamps = [sample["timestamp"].isoformat() for sample in outdoor_samples]
     outdoor_aqi = [sample["aqi"] for sample in outdoor_samples]
 
-    outdoor_y_max = DEFAULT_OUTDOOR_AQI_MAX
-    if outdoor_aqi:
-        outdoor_y_max = max(DEFAULT_OUTDOOR_AQI_MAX, max(outdoor_aqi) + 20)
-
+    # The server has no idea which time window (15m/1h/8h/24h/All, or a
+    # manual zoom) is currently displayed on the client -- that's purely a
+    # client-side Plotly rangeselector/zoom state. So instead of computing a
+    # y-axis max here from the *entire* history, we just hand over the floor
+    # constants; the client computes the actual max over whatever slice of
+    # `fine`/`outdoor_aqi` falls inside its currently displayed x-range.
     payload = {
         "timestamps": timestamps,
         "fine": fine_counts,
         "coarse": coarse_counts,
-        "y_max": y_max,
+        "y_floor": MAX_DYLOS_COUNT,
         "outdoor_timestamps": outdoor_timestamps,
         "outdoor_aqi": outdoor_aqi,
-        "outdoor_y_max": outdoor_y_max,
+        "outdoor_y_floor": DEFAULT_OUTDOOR_AQI_MAX,
         "thresholds": [
             {
                 "label": "OSHA 15-min exposure limit, non-exotic wood dust (10 mg/m\u00b3)",
