@@ -110,6 +110,11 @@
     const plotDiv = document.getElementById("plot");
     const statusPanel = document.getElementById("status-panel");
 
+    // NOTE: uirevision is no longer set at the top level here. It's applied
+    // per-axis below instead: "zoom" for the x-axis (so pan/zoom survives
+    // each 5s Plotly.react() refresh), and a fresh value every poll for the
+    // y-axes (so the dynamically computed range actually gets applied each
+    // time instead of being frozen after the first render).
     const darkLayout = {
       paper_bgcolor: "#1c1f26",
       plot_bgcolor: "#1c1f26",
@@ -158,8 +163,7 @@
         showgrid: false,
         zerolinecolor: "#2c3038",
         rangemode: "tozero"
-      },
-      uirevision: "keep"
+      }
     };
 
     const config = {
@@ -173,6 +177,51 @@
     // this ourselves and re-apply it on every refresh, since Plotly.react()
     // doesn't reliably preserve a programmatically-set range via uirevision.
     let currentXRange = null;
+    // Whether the trailing "last 8 hours" window should keep advancing to
+    // follow the latest data on each poll. Starts true (the default view);
+    // goes false the moment the user manually zooms, pans, or picks a
+    // rangeselector button, so the polling refresh doesn't yank them back
+    // to the live window. Clicking "All" turns it back off too (that's a
+    // deliberate choice to view the whole dataset, not "resume live").
+    let followLive = true;
+    const LIVE_WINDOW_MS = 8 * 60 * 60 * 1000;
+
+    // Cache of the last /data.json payload, so the relayout listener can
+    // recompute the y-axis range immediately on zoom/rangeselector clicks
+    // without waiting for the next 5s poll.
+    let lastData = null;
+
+    // Finds the max value across one or more series, restricted to points
+    // whose timestamp falls inside xRange (or all points, if xRange is null
+    // i.e. "All" is selected). This is what makes the y-axis reflect only
+    // the currently displayed window instead of the whole dataset.
+    function windowedMax(timestamps, seriesArrays, xRange) {
+      const startMs = xRange ? new Date(xRange[0]).getTime() : -Infinity;
+      const endMs = xRange ? new Date(xRange[1]).getTime() : Infinity;
+      let maxVal = 0;
+
+      for (let i = 0; i < timestamps.length; i++) {
+        const t = new Date(timestamps[i]).getTime();
+        if (t < startMs || t > endMs) continue;
+
+        for (const series of seriesArrays) {
+          const v = series[i];
+          if (typeof v === "number" && v > maxVal) maxVal = v;
+        }
+      }
+
+      return maxVal;
+    }
+
+    function computeYRanges(data, xRange) {
+      const dustMax = windowedMax(data.timestamps, [data.fine], xRange);
+      const yMax = Math.max(data.y_floor, dustMax + 100);
+
+      const outdoorMax = windowedMax(data.outdoor_timestamps, [data.outdoor_aqi], xRange);
+      const outdoorYMax = Math.max(data.outdoor_y_floor, outdoorMax + 20);
+
+      return { yMax, outdoorYMax };
+    }
 
     // Track user-driven zoom/pan/rangeselector changes so the 5s polling
     // refresh doesn't clobber whatever the user last selected. plotDiv.on
@@ -182,10 +231,27 @@
       plotDiv.on("plotly_relayout", (eventData) => {
         if (eventData["xaxis.range[0]"] !== undefined && eventData["xaxis.range[1]"] !== undefined) {
           currentXRange = [eventData["xaxis.range[0]"], eventData["xaxis.range[1]"]];
+          followLive = false; // user took manual control of the window
         } else if (Array.isArray(eventData["xaxis.range"])) {
           currentXRange = eventData["xaxis.range"];
+          followLive = false;
         } else if (eventData["xaxis.autorange"]) {
           currentXRange = null; // user clicked "All" or double-clicked to reset
+          followLive = false;   // stay on "All" rather than snapping back to live window
+        } else {
+          return; // not an x-range change, nothing to recompute
+        }
+
+        if (lastData) {
+          const { yMax, outdoorYMax } = computeYRanges(lastData, currentXRange);
+          // Triggers another plotly_relayout event, but it won't carry any
+          // of the xaxis.* keys checked above, so it hits the early return
+          // and doesn't recurse. Explicit relayout() calls aren't blocked
+          // by uirevision, so this still applies immediately on zoom.
+          Plotly.relayout(plotDiv, {
+            "yaxis.range": [0, yMax],
+            "yaxis2.range": [0, outdoorYMax]
+          });
         }
       });
     }
@@ -251,17 +317,21 @@
         return;
       }
 
+      lastData = data;
       const traces = buildTraces(data);
-      const xaxisConfig = { ...darkLayout.xaxis };
+      const xaxisConfig = { ...darkLayout.xaxis, uirevision: "zoom" };
 
-      if (!initialized) {
+      // Recompute the trailing live window on every poll (not just the
+      // first one) so the visible range keeps pace with new data, unless
+      // the user has manually taken control of the view.
+      if (followLive) {
         const latestTimestamp = data.timestamps.length
           ? data.timestamps[data.timestamps.length - 1]
           : null;
 
         if (latestTimestamp) {
           currentXRange = [
-            new Date(new Date(latestTimestamp).getTime() - 8 * 60 * 60 * 1000),
+            new Date(new Date(latestTimestamp).getTime() - LIVE_WINDOW_MS),
             new Date(latestTimestamp)
           ];
         }
@@ -272,16 +342,25 @@
       }
       // else: leave range unset, letting Plotly autorange (this is "All")
 
+      const { yMax, outdoorYMax } = computeYRanges(data, currentXRange);
+
+      // A fresh uirevision value on every poll ensures Plotly.react() treats
+      // the y-axis range as "new" each time and actually applies it, instead
+      // of freezing it at whatever it was on the first render.
+      const yRevision = Date.now();
+
       const layout = {
         ...darkLayout,
         xaxis: xaxisConfig,
         yaxis: {
           ...darkLayout.yaxis,
-          range: [0, data.y_max]
+          range: [0, yMax],
+          uirevision: yRevision
         },
         yaxis2: {
           ...darkLayout.yaxis2,
-          range: [0, data.outdoor_y_max]
+          range: [0, outdoorYMax],
+          uirevision: yRevision
         }
       };
 
